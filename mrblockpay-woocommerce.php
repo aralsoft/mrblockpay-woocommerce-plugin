@@ -30,6 +30,11 @@ function mrblockpay() {
     if (class_exists('WC_Payment_Gateway')) {
         class Mrblockpay_Payment_Gateway extends WC_Payment_Gateway
         {
+            public $instructions = '';
+            public $public_key = '';
+            public $secret_key = '';
+            public $api_url = 'https://mrblockpay.com/api';
+
             // Initialise class
             public function __construct()
             {
@@ -52,8 +57,6 @@ function mrblockpay() {
                 $this->instructions = $this->get_option('instructions');
                 $this->public_key = $this->get_option('public_key');
                 $this->secret_key = $this->get_option('secret_key');
-
-                $this->api_url = 'https://mrblockpay.com/api';
 
                 if (is_admin()) {
                     add_action('woocommerce_update_options_payment_gateways_'.$this->id, array($this, 'process_admin_options'));
