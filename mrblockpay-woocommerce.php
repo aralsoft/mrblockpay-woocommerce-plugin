@@ -59,20 +59,16 @@ function mrblockpay() {
                 $this->secret_key = $this->get_option('secret_key');
 
                 if (is_admin()) {
-                    add_action('woocommerce_update_options_payment_gateways_'.$this->id, array($this, 'process_admin_options'));
                     add_filter('plugin_action_links_'.plugin_basename(__FILE__), array($this, 'add_action_links'));
+                    add_action('woocommerce_update_options_payment_gateways_'.$this->id, array($this, 'process_admin_options'));
                 }
 
-                add_action('wp_enqueue_scripts', array($this, 'payment_scripts'));
-                add_action('woocommerce_checkout_update_order_meta', array($this, 'save_custom_checkout_fields'));
-                add_action('woocommerce_before_thankyou', array($this, 'thank_you_page'), 1);
-
                 add_filter('woocommerce_update_order_review_fragments', array($this, 'modify_order_review_ajax_response'));
-            }
 
-            public function save_custom_checkout_fields($order_id)
-            {
-                update_post_meta($order_id, 'mrblockpay_currency', sanitize_text_field($_POST['mrblockpay_currency']));
+                add_action('wp_enqueue_scripts', array($this, 'payment_scripts'));
+                add_action('woocommerce_before_thankyou', array($this, 'thank_you_page'), 1);
+                add_action('woocommerce_checkout_process', array($this, 'validate_custom_checkout_fields'));
+                add_action('woocommerce_checkout_update_order_meta', array($this, 'save_custom_checkout_fields'));
             }
 
             // Process order payment
@@ -127,7 +123,8 @@ function mrblockpay() {
             // Process order thank you page
             public function thank_you_page()
             {
-                if ($order = $this->get_order_from_key()) {
+                if ($order = $this->get_order_from_key())
+                {
                     $amount = ceil($order->get_meta('_order_crypto_amount') * 100) / 100;
 
                     $headers = [
@@ -360,6 +357,20 @@ function mrblockpay() {
                 }
             }
 
+            // Validate custom checkout fields
+            public function validate_custom_checkout_fields()
+            {
+                if (!$_POST['mrblockpay_currency']) {
+                    wc_add_notice('Please choose a Cryptocurrency to use with this order.', 'error');
+                }
+            }
+
+            // Save custom checkout fields
+            public function save_custom_checkout_fields($order_id)
+            {
+                update_post_meta($order_id, 'mrblockpay_currency', sanitize_text_field($_POST['mrblockpay_currency']));
+            }
+
         }
 
     } else {
@@ -385,10 +396,11 @@ function mrblockpay_get_currency_selector_form()
 function mrblockpay_currency_selector_form()
 {
     return '<div id="mrblockpay-currency-selector">
-                <label for="mrblockpay_currency">Choose Crypto Currency :</label>
+                <label for="mrblockpay_currency">Choose a Cryptocurrency :</label>
                 <select name="mrblockpay_currency">
+                    <option value="">Select Crypto</option>
                     <option value="TRX">TRX</option>
-                    <option value="USDT">USDT</option>
+                    <option value="USDT">Tether (TRC20)</option>
                 </select>
             </div>';
 }
