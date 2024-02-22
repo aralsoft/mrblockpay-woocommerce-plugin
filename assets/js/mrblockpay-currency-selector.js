@@ -3,7 +3,7 @@
 jQuery(document).ready(function($)
 {
     // Function to handle changes in the payment method
-    function handlePaymentMethodChange() {
+    function mrblockpayHandlePaymentMethodChange() {
         // Get the selected payment method
         var selectedPaymentMethod = $('input[name="payment_method"]:checked').val();
 
@@ -12,7 +12,7 @@ jQuery(document).ready(function($)
         {
             // Do Ajax call to get the currency selection form and if found insert in HTML
             $.ajax({
-                url: currencySelectorAjax.ajaxurl,
+                url: mrblockpayCurrencySelectorAjax.ajaxurl,
                 type: 'POST',
                 data: {
                     action: 'get_currency_selector_form'
@@ -31,6 +31,6 @@ jQuery(document).ready(function($)
     }
 
     // Event listener for payment method change
-    $('form.checkout').on('change', 'input[name="payment_method"]', handlePaymentMethodChange);
+    $('form.checkout').on('change', 'input[name="payment_method"]', mrblockpayHandlePaymentMethodChange);
 
 });

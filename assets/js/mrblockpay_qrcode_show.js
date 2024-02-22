@@ -7,7 +7,7 @@ jQuery(document).ready(function($)
         border: 1
     });
 
-    var depositWallet = qrCodeParams.depositWallet;
+    var depositWallet = mrblockpayQrCodeParams.depositWallet;
 
     qrcode.makeCode(depositWallet);
 });

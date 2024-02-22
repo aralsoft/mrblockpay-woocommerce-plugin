@@ -341,20 +341,22 @@ function mrblockpay() {
             // Output Javascript files
             public function payment_scripts()
             {
-                wp_enqueue_script('wc_mrblockpay_currency-selector-script', plugins_url('/assets/js/currency-selector.js', __FILE__), array('jquery'));
-                wp_localize_script('wc_mrblockpay_currency-selector-script', 'currencySelectorAjax', array(
-                    'ajaxurl' => admin_url('admin-ajax.php')
-                ));
-
                 if ($order = $this->get_order_from_key())
                 {
-                    wp_enqueue_script('wc_mrblockpay_refresh_page' ,plugins_url('/assets/js/refresh_page.js', __FILE__));
-                    wp_enqueue_script('wc_mrblockpay_qrcode' ,plugins_url('/assets/js/qrcode.js', __FILE__));
-                    wp_enqueue_script('wc_mrblockpay_qrcode_show' ,plugins_url('/assets/js/qrcode_show.js', __FILE__), array('jquery'));
-                    wp_localize_script('wc_mrblockpay_qrcode_show', 'qrCodeParams', array(
+                    wp_enqueue_script('wc_mrblockpay_refresh_page' ,plugins_url('/assets/js/mrblockpay_refresh_page.js', __FILE__));
+                    wp_enqueue_script('wc_mrblockpay_qrcode' ,plugins_url('/assets/js/mrblockpay_qrcode.js', __FILE__));
+                    wp_enqueue_script('wc_mrblockpay_qrcode_show' ,plugins_url('/assets/js/mrblockpay_qrcode_show.js', __FILE__), array('jquery'));
+                    wp_localize_script('wc_mrblockpay_qrcode_show', 'mrblockpayQrCodeParams', array(
                         'depositWallet' => $order->get_meta('_order_deposit_wallet')
                     ));
+                } else
+                {
+                    wp_enqueue_script('wc_mrblockpay_currency-selector-script', plugins_url('/assets/js/mrblockpay-currency-selector.js', __FILE__), array('jquery'));
+                    wp_localize_script('wc_mrblockpay_currency-selector-script', 'mrblockpayCurrencySelectorAjax', array(
+                        'ajaxurl' => admin_url('admin-ajax.php')
+                    ));
                 }
+
             }
 
             // Validate custom checkout fields
