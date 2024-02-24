@@ -63,12 +63,64 @@ function mrblockpay() {
                     add_action('woocommerce_update_options_payment_gateways_'.$this->id, array($this, 'process_admin_options'));
                 }
 
+                add_action('wp_enqueue_scripts', array($this, 'payment_scripts'));
+
                 add_filter('woocommerce_update_order_review_fragments', array($this, 'modify_order_review_ajax_response'));
 
-                add_action('wp_enqueue_scripts', array($this, 'payment_scripts'));
                 add_action('woocommerce_before_thankyou', array($this, 'thank_you_page'), 1);
-                add_action('woocommerce_checkout_process', array($this, 'validate_custom_checkout_fields'));
+                add_action('woocommerce_after_checkout_validation', array($this, 'validate_custom_checkout_fields'));
                 add_action('woocommerce_checkout_update_order_meta', array($this, 'save_custom_checkout_fields'));
+            }
+
+            // Output Javascript files
+            public function payment_scripts()
+            {
+                if ($order = $this->get_order_from_key())
+                {
+                    wp_enqueue_script('wc_mrblockpay_refresh_page' ,plugins_url('/assets/js/mrblockpay_refresh_page.js', __FILE__));
+                    wp_enqueue_script('wc_mrblockpay_qrcode' ,plugins_url('/assets/js/mrblockpay_qrcode.js', __FILE__));
+                    wp_enqueue_script('wc_mrblockpay_qrcode_show' ,plugins_url('/assets/js/mrblockpay_qrcode_show.js', __FILE__), array('jquery'));
+                    wp_localize_script('wc_mrblockpay_qrcode_show', 'mrblockpayQrCodeParams', array(
+                        'depositWallet' => $order->get_meta('_order_deposit_wallet')
+                    ));
+                }
+                else
+                {
+                    wp_enqueue_script('wc_mrblockpay_currency-selector-script', plugins_url('/assets/js/mrblockpay-currency-selector.js', __FILE__), array('jquery'));
+                    wp_localize_script('wc_mrblockpay_currency-selector-script', 'mrblockpayCurrencySelectorAjax', array(
+                        'ajaxurl' => admin_url('admin-ajax.php')
+                    ));
+                }
+
+            }
+
+            // Add currency selector form on checkout page load
+            public function modify_order_review_ajax_response($response)
+            {
+                $dom = new DOMDocument();
+                $dom->loadHTML($response['.woocommerce-checkout-payment']);
+
+                $radio_buttons = $dom->getElementsByTagName('input');
+
+                foreach ($radio_buttons as $radio) {
+                    if ($radio->getAttribute('type') === 'radio'
+                        && $radio->getAttribute('name') === 'payment_method'
+                        && $radio->getAttribute('value') === 'mrblockpay'
+                        && $radio->getAttribute('checked') === 'checked')
+                    {
+                        $form = mrblockpay_currency_selector_form();
+
+                        if ($start = strpos($response['.woocommerce-checkout-payment'], 'payment_box payment_method_mrblockpay')) {
+                            if ($end = strpos($response['.woocommerce-checkout-payment'], '</div>', $start)) {
+                                $response['.woocommerce-checkout-payment'] = substr_replace($response['.woocommerce-checkout-payment'], $form, $end, 0);
+                            }
+                        }
+
+                        break;
+                    }
+                }
+
+                return $response;
             }
 
             // Process order payment
@@ -123,84 +175,102 @@ function mrblockpay() {
             // Process order thank you page
             public function thank_you_page()
             {
-                if ($order = $this->get_order_from_key())
-                {
-                    $amount = ceil($order->get_meta('_order_crypto_amount') * 100) / 100;
+                if (!$order = $this->get_order_from_key()) {
+                    echo '<div style="background-color: #990000; padding: 10px; color: #FFF;">';
+                    echo '<strong>Invalid order key.</strong>';
+                    echo '</div><br/>';
+                    return;
+                }
 
-                    $headers = [
+                $args = [
+                    'timeout' => 30,
+                    'body' => array('order_key' => $order->get_order_key()),
+                    'headers' => [
                         'Public-Key' => $this->public_key,
                         'Signature' => hash_hmac('sha256', $order->get_order_key(), $this->secret_key),
                         'Content-Type' => 'application/x-www-form-urlencoded;charset=UTF-8'
-                    ];
+                    ]
+                ];
 
-                    $args = [
-                        'timeout' => 30,
-                        'body' => array('order_key' => $order->get_order_key()),
-                        'headers' => $headers
-                    ];
+                $response = wp_remote_post($this->api_url . '/check_order_transactions', $args);
 
-                    $response = wp_remote_post($this->api_url . '/check_order_transactions', $args);
-
-                    if ($response['response']['code'] == 200) {
-                        parse_str($response['body'], $responseBody);
-
-                        if ($responseBody['status'] == 'success') {
-                            if ($responseBody['payment_status'] == 'paid') {
-                                $order->update_status('processing');
-                                echo '<div style="background-color: #009900; padding: 10px; color: #FFF;">';
-                                echo '<strong>Payment Received In Full.</strong>';
-                                echo '</div><br/>';
-                            } else if ($responseBody['payment_status'] == 'cancelled') {
-                                $order->update_status('cancelled');
-                                echo '<div style="background-color: #990000; padding: 10px; color: #FFF;">';
-                                echo '<strong>Order Cancelled.</strong>';
-                                echo '</div><br/>';
-                            } else {
-                                echo '
-                           <table>
-                           <tr>
-                           
-                           <td>
-                                <div id="qrcode-out">
-                                    <div id="qrcode" style="margin-top:7px;">
-                                        <img alt="Scan me!" style="display: none;">
-                                    </div>
-                                </div>
-                            </td>
-                            <td>
-                            
-                                <p>
-                                Send Payment To: <strong>' . esc_html($order->get_meta('_order_deposit_wallet')) . '</strong>
-                                </p>
-                                <p>
-                                Order Amount: <strong>' . number_format(esc_attr($amount), 2) . ' ' . esc_html($order->get_meta('_order_crypto_currency')) . '</strong>
-                                <br/>Amount Received: <strong>' . number_format(esc_attr($responseBody['total_received']), 2) . ' ' . esc_html($order->get_meta('_order_crypto_currency')) . '</strong>
-                                <br/>Amount Remaining: <strong>' . number_format(esc_attr($amount - $responseBody['total_received']), 2) . ' ' . esc_html($order->get_meta('_order_crypto_currency')) . '</strong>
-                                </p>
-                                <p>Time left to Transaction check: <span id="countdown-timer"><strong>1:00</strong></span></p>
-                            </td>
-                         
-                            </tr>
-                            </table>
-                            
-                            <p><strong>' . esc_html($this->instructions) . '</strong></p>
-                            ';
-                            }
-                        } else {
-                            echo '<div style="background-color: #990000; padding: 10px; color: #FFF;">';
-                            echo '<strong>Order Not Found.</strong>';
-                            echo '</div><br/>';
-                        }
-                    } else {
-                        echo '<div style="background-color: #990000; padding: 10px; color: #FFF;">';
-                        echo '<strong>Failed to retrieve order.</strong>';
-                        echo '</div><br/>';
-                    }
-                } else {
+                if ($response['response']['code'] != 200) {
                     echo '<div style="background-color: #990000; padding: 10px; color: #FFF;">';
-                    echo '<strong>Order key is missing.</strong>';
+                    echo '<strong>Invalid API response.</strong>';
+                    echo '</div><br/>';
+                    return;
+                }
+
+                parse_str($response['body'], $responseBody);
+
+                if ($responseBody['status'] != 'success') {
+                    echo '<div style="background-color: #990000; padding: 10px; color: #FFF;">';
+                    echo '<strong>Invalid order status.</strong>';
+                    echo '</div><br/>';
+                    return;
+                }
+
+                // Output order payment details
+                if ($responseBody['payment_status'] == 'paid')
+                {
+                    $order->update_status('processing');
+                    echo '<div style="background-color: #009900; padding: 10px; color: #FFF;">';
+                    echo '<strong>Payment Received In Full.</strong>';
                     echo '</div><br/>';
                 }
+                else if ($responseBody['payment_status'] == 'cancelled')
+                {
+                    $order->update_status('cancelled');
+                    echo '<div style="background-color: #990000; padding: 10px; color: #FFF;">';
+                    echo '<strong>Order Cancelled.</strong>';
+                    echo '</div><br/>';
+                }
+                else
+                {
+                    if (!is_numeric($order->get_meta('_order_crypto_amount'))) {
+                        echo '<div style="background-color: #990000; padding: 10px; color: #FFF;">';
+                        echo '<strong>Invalid order amount.</strong>';
+                        echo '</div><br/>';
+                        return;
+                    }
+
+                    $depositWallet = esc_html($order->get_meta('_order_deposit_wallet'));
+                    $orderAmount = esc_attr(ceil($order->get_meta('_order_crypto_amount') * 100) / 100);
+                    $cryptoCurrency = esc_html($order->get_meta('_order_crypto_currency'));
+                    $totalReceived  = esc_attr($responseBody['total_received']);
+
+                    echo '
+                        <table>
+                        <tr>
+                       
+                        <td>
+                            <div id="qrcode-out">
+                                <div id="qrcode" style="margin-top:7px;">
+                                    <img alt="Scan me!" style="display: none;">
+                                </div>
+                            </div>
+                        </td>
+                        
+                        <td>
+                            <p>
+                            Send Payment To: <strong>' . $depositWallet . '</strong>
+                            </p>
+                            <p>
+                            Order Amount: <strong>' . number_format($orderAmount, 2) . ' ' . $cryptoCurrency . '</strong>
+                            <br/>Amount Received: <strong>' . number_format($totalReceived, 2) . ' ' . $cryptoCurrency . '</strong>
+                            <br/>Amount Remaining: <strong>' . number_format($orderAmount - $totalReceived, 2) . ' ' . $cryptoCurrency . '</strong>
+                            </p>
+                            <p>Time left to Transaction check: <span id="countdown-timer"><strong>1:00</strong></span></p>
+                        </td>
+                     
+                        </tr>
+                        </table>
+                        
+                        <p>
+                            <strong>' . esc_html($this->instructions) . '</strong>
+                        </p>
+                        ';
+                    }
 
             }
 
@@ -253,33 +323,18 @@ function mrblockpay() {
                 return wc_get_order(wc_get_order_id_by_order_key($key));
             }
 
-            // Add currency selector form on checkout page load
-            public function modify_order_review_ajax_response($response)
+            // Validate custom checkout fields
+            public function validate_custom_checkout_fields()
             {
-                $dom = new DOMDocument();
-                $dom->loadHTML($response['.woocommerce-checkout-payment']);
-
-                $radio_buttons = $dom->getElementsByTagName('input');
-
-                foreach ($radio_buttons as $radio) {
-                    if ($radio->getAttribute('type') === 'radio'
-                        && $radio->getAttribute('name') === 'payment_method'
-                        && $radio->getAttribute('value') === 'mrblockpay'
-                        && $radio->getAttribute('checked') === 'checked')
-                    {
-                        $form = mrblockpay_currency_selector_form();
-
-                        if ($start = strpos($response['.woocommerce-checkout-payment'], 'payment_box payment_method_mrblockpay')) {
-                            if ($end = strpos($response['.woocommerce-checkout-payment'], '</div>', $start)) {
-                                $response['.woocommerce-checkout-payment'] = substr_replace($response['.woocommerce-checkout-payment'], $form, $end, 0);
-                            }
-                        }
-
-                        break;
-                    }
+                if (!isset($_POST['mrblockpay_currency']) || !$_POST['mrblockpay_currency']) {
+                    wc_add_notice('Please choose a Cryptocurrency to use with this order.', 'error');
                 }
+            }
 
-                return $response;
+            // Save custom checkout fields
+            public function save_custom_checkout_fields($order_id)
+            {
+                update_post_meta($order_id, 'mrblockpay_currency', sanitize_text_field($_POST['mrblockpay_currency']));
             }
 
             // Initialise settings form fields
@@ -338,44 +393,11 @@ function mrblockpay() {
                 return array_merge($myLinks, $actions);
             }
 
-            // Output Javascript files
-            public function payment_scripts()
-            {
-                if ($order = $this->get_order_from_key())
-                {
-                    wp_enqueue_script('wc_mrblockpay_refresh_page' ,plugins_url('/assets/js/mrblockpay_refresh_page.js', __FILE__));
-                    wp_enqueue_script('wc_mrblockpay_qrcode' ,plugins_url('/assets/js/mrblockpay_qrcode.js', __FILE__));
-                    wp_enqueue_script('wc_mrblockpay_qrcode_show' ,plugins_url('/assets/js/mrblockpay_qrcode_show.js', __FILE__), array('jquery'));
-                    wp_localize_script('wc_mrblockpay_qrcode_show', 'mrblockpayQrCodeParams', array(
-                        'depositWallet' => $order->get_meta('_order_deposit_wallet')
-                    ));
-                } else
-                {
-                    wp_enqueue_script('wc_mrblockpay_currency-selector-script', plugins_url('/assets/js/mrblockpay-currency-selector.js', __FILE__), array('jquery'));
-                    wp_localize_script('wc_mrblockpay_currency-selector-script', 'mrblockpayCurrencySelectorAjax', array(
-                        'ajaxurl' => admin_url('admin-ajax.php')
-                    ));
-                }
-
-            }
-
-            // Validate custom checkout fields
-            public function validate_custom_checkout_fields()
-            {
-                if (!$_POST['mrblockpay_currency']) {
-                    wc_add_notice('Please choose a Cryptocurrency to use with this order.', 'error');
-                }
-            }
-
-            // Save custom checkout fields
-            public function save_custom_checkout_fields($order_id)
-            {
-                update_post_meta($order_id, 'mrblockpay_currency', sanitize_text_field($_POST['mrblockpay_currency']));
-            }
-
         }
 
-    } else {
+    }
+    else
+    {
         die('Woocommerce Payment Gateway class not found.');
     }
 }
