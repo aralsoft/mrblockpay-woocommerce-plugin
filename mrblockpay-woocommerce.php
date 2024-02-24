@@ -70,6 +70,7 @@ function mrblockpay() {
                 add_action('woocommerce_before_thankyou', array($this, 'thank_you_page'), 1);
                 add_action('woocommerce_after_checkout_validation', array($this, 'validate_custom_checkout_fields'));
                 add_action('woocommerce_checkout_update_order_meta', array($this, 'save_custom_checkout_fields'));
+
             }
 
             // Output Javascript files
@@ -179,6 +180,10 @@ function mrblockpay() {
                     echo '<div style="background-color: #990000; padding: 10px; color: #FFF;">';
                     echo '<strong>Invalid order key.</strong>';
                     echo '</div><br/>';
+                    return;
+                }
+
+                if ($order->get_payment_method() != $this->id) {
                     return;
                 }
 
@@ -326,7 +331,7 @@ function mrblockpay() {
             // Validate custom checkout fields
             public function validate_custom_checkout_fields()
             {
-                if (!isset($_POST['mrblockpay_currency']) || !$_POST['mrblockpay_currency']) {
+                if (WC()->session->get('chosen_payment_method') == $this->id && (!isset($_POST['mrblockpay_currency']) || !$_POST['mrblockpay_currency'])) {
                     wc_add_notice('Please choose a Cryptocurrency to use with this order.', 'error');
                 }
             }
@@ -334,7 +339,9 @@ function mrblockpay() {
             // Save custom checkout fields
             public function save_custom_checkout_fields($order_id)
             {
-                update_post_meta($order_id, 'mrblockpay_currency', sanitize_text_field($_POST['mrblockpay_currency']));
+                if (isset($_POST['mrblockpay_currency'])) {
+                    update_post_meta($order_id, 'mrblockpay_currency', sanitize_text_field($_POST['mrblockpay_currency']));
+                }
             }
 
             // Initialise settings form fields
