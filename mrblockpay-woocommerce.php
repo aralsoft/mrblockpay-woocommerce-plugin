@@ -39,7 +39,7 @@ function mrblockpay() {
             public function __construct()
             {
                 $this->id = 'mrblockpay';
-                $this->icon = apply_filters('woocommerce_mrblockpay_icon', plugins_url('/assets/img/crypto-icon.png', __FILE__));
+                $this->icon = apply_filters('woocommerce_mrblockpay_icon', plugins_url('/assets/img/trx-icon.png', __FILE__));
                 $this->has_fields = false;
                 $this->method_title = 'MrBlockPay';
                 $this->method_description = 'Cryptocurrency Checkout Support. <a href="https://mrblockpay.com/account/register" target="_blank">Get your API keys.</a>';
@@ -65,11 +65,11 @@ function mrblockpay() {
 
                 add_action('wp_enqueue_scripts', array($this, 'payment_scripts'));
 
-                add_filter('woocommerce_update_order_review_fragments', array($this, 'modify_order_review_ajax_response'));
+                //add_filter('woocommerce_update_order_review_fragments', array($this, 'modify_order_review_ajax_response'));
 
                 add_action('woocommerce_before_thankyou', array($this, 'thank_you_page'), 1);
-                add_action('woocommerce_after_checkout_validation', array($this, 'validate_custom_checkout_fields'));
-                add_action('woocommerce_checkout_update_order_meta', array($this, 'save_custom_checkout_fields'));
+                //add_action('woocommerce_after_checkout_validation', array($this, 'validate_custom_checkout_fields'));
+                //add_action('woocommerce_checkout_update_order_meta', array($this, 'save_custom_checkout_fields'));
 
             }
 
@@ -81,22 +81,18 @@ function mrblockpay() {
                     wp_enqueue_script('wc_mrblockpay_refresh_page' ,plugins_url('/assets/js/mrblockpay_refresh_page.js', __FILE__));
                     wp_enqueue_script('wc_mrblockpay_qrcode' ,plugins_url('/assets/js/mrblockpay_qrcode.js', __FILE__));
                     wp_enqueue_script('wc_mrblockpay_qrcode_show' ,plugins_url('/assets/js/mrblockpay_qrcode_show.js', __FILE__), array('jquery'));
-                    wp_localize_script('wc_mrblockpay_qrcode_show', 'mrblockpayQrCodeParams', array(
-                        'depositWallet' => $order->get_meta('_order_deposit_wallet')
-                    ));
+                    wp_localize_script('wc_mrblockpay_qrcode_show', 'mrblockpayQrCodeParams', array('depositWallet' => $order->get_meta('_order_deposit_wallet')));
                 }
                 else
                 {
-                    wp_enqueue_script('wc_mrblockpay_currency-selector-script', plugins_url('/assets/js/mrblockpay-currency-selector.js', __FILE__), array('jquery'));
-                    wp_localize_script('wc_mrblockpay_currency-selector-script', 'mrblockpayCurrencySelectorAjax', array(
-                        'ajaxurl' => admin_url('admin-ajax.php')
-                    ));
+                    //wp_enqueue_script('wc_mrblockpay_currency-selector-script', plugins_url('/assets/js/mrblockpay-currency-selector.js', __FILE__), array('jquery'));
+                    //wp_localize_script('wc_mrblockpay_currency-selector-script', 'mrblockpayCurrencySelectorAjax', array('ajaxurl' => admin_url('admin-ajax.php')));
                 }
 
             }
 
             // Add currency selector form on checkout page load
-            public function modify_order_review_ajax_response($response)
+       /*     public function modify_order_review_ajax_response($response)
             {
                 $dom = new DOMDocument();
                 $dom->loadHTML($response['.woocommerce-checkout-payment']);
@@ -123,12 +119,20 @@ function mrblockpay() {
 
                 return $response;
             }
+        */
 
             // Process order payment
             public function process_payment($order_id)
             {
                 if ($order = wc_get_order($order_id))
                 {
+                    if ($order->get_payment_method() != $this->id) {
+                        return array(
+                            'result' => 'failure',
+                            'redirect' => $this->get_return_url($order)
+                        );
+                    }
+
                     $order->update_status('pending-payment');
 
                     $orderDetails = $this->get_order_details($order);
@@ -287,7 +291,8 @@ function mrblockpay() {
                     'order_key' => $order->get_order_key(),
                     'amount' => $order->get_total(),
                     'currency' => get_woocommerce_currency(),
-                    'crypto' => get_post_meta($order->get_id(), 'mrblockpay_currency', true),
+                    //'crypto' => get_post_meta($order->get_id(), 'mrblockpay_currency', true),
+                    'crypto' => 'TRX',
                     'billing_fname' => sanitize_text_field($order->get_billing_first_name()),
                     'billing_lname' => sanitize_text_field($order->get_billing_last_name()),
                     'billing_email' => sanitize_email($order->get_billing_email()),
@@ -328,8 +333,9 @@ function mrblockpay() {
                 return wc_get_order(wc_get_order_id_by_order_key($key));
             }
 
+
             // Validate custom checkout fields
-            public function validate_custom_checkout_fields()
+   /*         public function validate_custom_checkout_fields()
             {
                 if (WC()->session->get('chosen_payment_method') == $this->id && (!isset($_POST['mrblockpay_currency']) || !$_POST['mrblockpay_currency'])) {
                     wc_add_notice('Please choose a Cryptocurrency to use with this order.', 'error');
@@ -343,6 +349,7 @@ function mrblockpay() {
                     update_post_meta($order_id, 'mrblockpay_currency', sanitize_text_field($_POST['mrblockpay_currency']));
                 }
             }
+    */
 
             // Initialise settings form fields
             public function init_form_fields()
@@ -358,21 +365,21 @@ function mrblockpay() {
                         'title' => 'Mr Block Pay Title',
                         'type' => 'text',
                         'description' => 'Add a new title for Mr Block Pay gateway that customers see at checkout',
-                        'default' => 'Mr Block Pay Crypto Payment Gateway',
+                        'default' => 'Mr Block Pay Tron Payment Gateway',
                         'desc_tip' => true
                     ),
                     'description' => array(
                         'title' => 'Mr Block Pay Description',
                         'type' => 'textarea',
                         'description' => 'Add a new description for Mr Block Pay gateway that customers see at checkout',
-                        'default' => 'Please choose Cryptocurrency to use and send your payment to the wallet address shown on the Thank You page to complete your order.',
+                        'default' => 'Please send your TRX payment to the wallet address shown on the next page to complete your order.',
                         'desc_tip' => true
                     ),
                     'instructions' => array(
                         'title' => 'Payment Instructions',
                         'type' => 'textarea',
                         'description' => 'Add payment instructions that customers see at thank you page.',
-                        'default' => 'Please send your payment to the address shown above to complete your order.',
+                        'default' => 'Please send your TRX payment to the address shown above to complete your order.',
                         'desc_tip' => true
                     ),
                     'credentials_title' => array(
@@ -410,8 +417,8 @@ function mrblockpay() {
 }
 
 // Handle currency selector form on change of payment option
-add_action('wp_ajax_get_currency_selector_form', 'mrblockpay_get_currency_selector_form');
-add_action('wp_ajax_nopriv_get_currency_selector_form', 'mrblockpay_get_currency_selector_form');
+//add_action('wp_ajax_get_currency_selector_form', 'mrblockpay_get_currency_selector_form');
+//add_action('wp_ajax_nopriv_get_currency_selector_form', 'mrblockpay_get_currency_selector_form');
 function mrblockpay_get_currency_selector_form()
 {
     ob_start();
