@@ -419,6 +419,7 @@ function mrblockpay() {
 // Handle currency selector form on change of payment option
 //add_action('wp_ajax_get_currency_selector_form', 'mrblockpay_get_currency_selector_form');
 //add_action('wp_ajax_nopriv_get_currency_selector_form', 'mrblockpay_get_currency_selector_form');
+/*
 function mrblockpay_get_currency_selector_form()
 {
     ob_start();
@@ -442,6 +443,7 @@ function mrblockpay_currency_selector_form()
                 </select>
             </div>';
 }
+*/
 
 // Add plugin as a payment gateway
 add_filter('woocommerce_payment_gateways', 'mrblockpay_add_payment_gateway');
