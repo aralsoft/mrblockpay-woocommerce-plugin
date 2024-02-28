@@ -126,49 +126,44 @@ function mrblockpay() {
             {
                 if ($order = wc_get_order($order_id))
                 {
-                    if ($order->get_payment_method() != $this->id) {
-                        return array(
-                            'result' => 'failure',
-                            'redirect' => $this->get_return_url($order)
-                        );
-                    }
-
-                    $order->update_status('pending-payment');
-
-                    $orderDetails = $this->get_order_details($order);
-
-                    $headers = [
-                        'Public-Key' => $this->public_key,
-                        'Signature' => hash_hmac('sha256', $orderDetails['order_key'], $this->secret_key),
-                        'Content-Type' => 'application/x-www-form-urlencoded;charset=UTF-8'
-                    ];
-
-                    $args = [
-                        'timeout' => 60,
-                        'body' => $orderDetails,
-                        'headers' => $headers
-                    ];
-
-                    $response = wp_remote_post($this->api_url, $args);
-
-                    if ($response['response']['code'] == 200)
+                    if ($this->isPaymentMethodMrBlockPay($order))
                     {
-                        parse_str($response['body'], $responseBody);
+                        $order->update_status('pending-payment');
 
-                        if ($responseBody['status'] == 'success')
+                        $orderDetails = $this->get_order_details($order);
+
+                        $headers = [
+                            'Public-Key' => $this->public_key,
+                            'Signature' => hash_hmac('sha256', $orderDetails['order_key'], $this->secret_key),
+                            'Content-Type' => 'application/x-www-form-urlencoded;charset=UTF-8'
+                        ];
+
+                        $args = [
+                            'timeout' => 60,
+                            'body' => $orderDetails,
+                            'headers' => $headers
+                        ];
+
+                        $response = wp_remote_post($this->api_url, $args);
+
+                        if ($response['response']['code'] == 200)
                         {
-                            $order->update_meta_data('_order_deposit_wallet', $responseBody['wallet']);
-                            $order->update_meta_data('_order_crypto_amount', $responseBody['amount']);
-                            $order->update_meta_data('_order_crypto_currency', $orderDetails['crypto']);
-                            $order->save_meta_data();
+                            parse_str($response['body'], $responseBody);
 
-                            return array(
-                                'result' => 'success',
-                                'redirect' => $this->get_return_url($order)
-                            );
+                            if ($responseBody['status'] == 'success')
+                            {
+                                $order->update_meta_data('_order_deposit_wallet', $responseBody['wallet']);
+                                $order->update_meta_data('_order_crypto_amount', $responseBody['amount']);
+                                $order->update_meta_data('_order_crypto_currency', $orderDetails['crypto']);
+                                $order->save_meta_data();
+
+                                return array(
+                                    'result' => 'success',
+                                    'redirect' => $this->get_return_url($order)
+                                );
+                            }
                         }
                     }
-
                 }
 
                 return array(
@@ -187,7 +182,7 @@ function mrblockpay() {
                     return;
                 }
 
-                if ($order->get_payment_method() != $this->id) {
+                if (!$this->isPaymentMethodMrBlockPay($order)) {
                     return;
                 }
 
@@ -333,6 +328,15 @@ function mrblockpay() {
                 return wc_get_order(wc_get_order_id_by_order_key($key));
             }
 
+            // Return order object with order key
+            public function isPaymentMethodMrBlockPay($order)
+            {
+                if ($order->get_payment_method() == $this->id) {
+                    return TRUE;
+                }
+
+                return FALSE;
+            }
 
             // Validate custom checkout fields
    /*         public function validate_custom_checkout_fields()
